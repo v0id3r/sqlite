@@ -40,11 +40,12 @@ import (
 // registers on that Driver alone: [Driver.RegisterFunction],
 // [Driver.RegisterScalarFunction],
 // [Driver.RegisterDeterministicScalarFunction],
-// [Driver.RegisterCollationUtf8], [Driver.RegisterConnectionHook] and
-// [Driver.RegisterModule]. The zero Driver is ready to use; there is no
-// constructor. What it registers stays on it, so two constructed Drivers do
-// not see each other's registrations and neither leaks into the package-level
-// driver. Modules it registers itself are installed in addition to the
+// [Driver.RegisterCollationUtf8], [Driver.RegisterConnectionHook],
+// [Driver.RegisterModule] and [Driver.RegisterFTS5Tokenizer]. The zero Driver
+// is ready to use; there is no constructor. What it registers stays on it, so
+// two constructed Drivers do not see each other's registrations and neither
+// leaks into the package-level driver. Modules it registers itself are
+// installed in addition to the
 // process-global ones, not instead of them, and where both registered the
 // same name the package-level implementation wins on its connections.
 //
@@ -67,6 +68,9 @@ type Driver struct {
 	// modules holds registered virtual table modules that should be added to
 	// every new connection on Open.
 	modules map[string]vtab.Module
+	// fts5Tokenizers holds registered FTS5 tokenizers that should be added to
+	// every new connection on Open.
+	fts5Tokenizers map[string]FTS5TokenizerFactory
 }
 
 var d = &Driver{
@@ -328,6 +332,10 @@ func (d *Driver) Open(name string) (conn driver.Conn, err error) {
 	// module is registered after a connection has been opened, that existing
 	// connection will not see the module; open a new connection to use it.
 	if err := c.registerModules(d); err != nil {
+		c.Close()
+		return nil, err
+	}
+	if err := c.registerFTS5Tokenizers(d); err != nil {
 		c.Close()
 		return nil, err
 	}
